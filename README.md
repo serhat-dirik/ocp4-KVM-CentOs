@@ -463,6 +463,7 @@ echo "address=/apps.${CLUSTER_NAME}.${BASE_DOM}/${LBIP}" \
 ```
 
 ##### Configure haproxy
+
 Configure load balancing (haproxy).
 We will add frontend/backend configuration in haproxy to point the required ports (6443, 22623, 80, 443) to their corresponding endpoints.
 
@@ -672,25 +673,24 @@ version   4.2.13     True        False         95s     Cluster version is 4.2.13
 
 ```
 
- ##### Congratulations! Your cluster is ready   
+Congratulations! Your cluster is ready and fully functional  
 
 ## Step 10 and Beyond: Optional Steps
 
 <details>
-<summary> Optional: Set Authentication Provider (htpasswd) </summary>
+<summary>Optional: Set Authentication Provider (htpasswd) </summary>
 
 ## Set Authentication Provider (htpasswd)
-  By default, only a kubeadmin user exists on your cluster. To specify an identity provider, you must create a Custom Resource (CR) that describes that identity provider and add it to the cluster.
+  By default, only a kubeadmin user exists on your cluster.
   To use the HTPasswd identity provider, you must generate a flat file that contains the user names and passwords for your cluster by using htpasswd. Create or update your flat file with a user name and hashed password:
 
 ```shell
-
-   htpasswd -c -B -b </path/to/users.htpasswd> <user_name> <password>
+ htpasswd -c -B -b </path/to/users.htpasswd> <user_name> <password>
 # Continue to add or update credentials to the file:
-   htpasswd -B -b </path/to/users.htpasswd> <user_name> <password>
+ htpasswd </path/to/users.htpasswd> <user_name> <password>
 ```
 
-  Create an OpenShift Container Platform Secret that contains the HTPasswd users file.
+Create an OpenShift Container Platform Secret that contains the HTPasswd users file.
 
 ```shell
  oc create secret generic htpass-secret --from-file=htpasswd=</path/to/users.htpasswd> -n openshift-config
@@ -714,7 +714,7 @@ spec:
       fileData:
         name: htpass-secret
 EOF
-
+# Apply it
 oc apply -f ./htpasswd_provider.yaml -n openshift-config
 ```
 If a CR does not exist, oc apply creates a new CR and might trigger the following warning: Warning: oc apply should be used on resources created by either oc create --save-config or oc apply. In this case you can safely ignore this warning.
@@ -725,7 +725,6 @@ oc login -u <username>
 #Confirm that the user logged in successfully, and display the user name.
 oc whoami
 ```
-
 After you define an identity provider and create a new cluster-admin user, you can remove the kubeadmin to improve cluster security.
 ```shell
 # Define a user as cluster-admin (You must be logged in as an administrator)
@@ -813,7 +812,7 @@ netstat -nltupe | grep ':6443\|:22623\|:80\|:443'
 
 ## Optional: NFS Server
 
-   NFS Server is needed to provide storage for your persistent workloads. Providing a storage for your Image Registry is also important for an health and fast serving cluster.
+ NFS Server is needed to provide storage for your persistent workloads. Providing a storage for your Image Registry is also important for an health and fast serving cluster.
 
 ### Deploy NFS server
 
@@ -906,7 +905,7 @@ mount
 umount -f -l /tmp/mnttst
 ```
 
-If tests are ok, let's create persistent volumes
+If tests are ok, let's create persistent volumes.
 
 ```shell
 mkdir storage
@@ -930,6 +929,8 @@ spec:
 EOF
 oc create -f ./pv$i.yaml
 done
+```
+```shell
 echo 'Generating 2Gi PVs'
 for i in {21..30}
 do
@@ -949,6 +950,8 @@ spec:
 EOF
 oc create -f ./pv$i.yaml
 done
+```
+```shell
 echo 'Generating 5Gi PVs'
 for i in {31..35}
 do
@@ -991,6 +994,9 @@ spec:
 EOF
 oc create -f ./pvregistry.yaml
 oc get pv
+```
+Later we need to reconfigure image registry cluster operator
+```shell
 #Get Image Registry Backup
 oc get configs.imageregistry.operator.openshift.io -o yaml --export > ./imageregistry-backup.yaml
 # Patch image registry , previously patched as empty dir
@@ -1020,13 +1026,13 @@ git clone https://github.com/neilpang/acme.sh
 cd acme.sh
 ```
 
-Provide your DNS Keys. I'm using godady in this case
+Provide your DNS Keys. I'm using godady in this case. It uses different variables for different DNS provides. Check the project repo to find out which variables required for your case.
 
 ```shell
 export GD_Key="sdfsdfsdfljlbjkljlkjsdfoiwje"
 export GD_Secret="asdfsdafdsfdsfdsfdsfdsafd"
 ```
-Make sure that you are connected to your Red Hat OpenShift Cluster. You can either do these steps from a bastion host that you installed Red Hat OpenShift from or you can log into the cluster as a user that has cluster administrator permissions. Right after the installation this includes the system:admin and kubeadmin users.
+Make sure that you are connected to your Red Hat OpenShift Cluster.
 
 ```shell
 # find the server address
@@ -1060,7 +1066,7 @@ After you update the IngressController object the OpenShift ingress operator not
 <summary>Optional: Single Master</summary>
 
 ## Optional: Single Master
-  If you deployed only a single master, you can remove etcd quorum guard and decrease number of some pod replicas to 1 only.  
+  If you deployed only a single master in previous steps, you can remove etcd quorum guard and decrease number of some pod replicas to 1 only.  
 ### Remove the Etcd Quorum Guard
 ```shell
 #Extract release info
