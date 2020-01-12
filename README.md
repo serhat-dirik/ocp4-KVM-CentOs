@@ -1,7 +1,7 @@
 # OpenShift 4 installation on KVM
 
-This is my personal notes for OCP 4 installation on KVM. The steps below used to install the required stack on a bare metal, dedicated server that I got from one hosting providers. Although my goal was exposing my services to public internet access, I believe that you can use this guideline to deploy OCP4 on your laptop as skipping some steps.
-Thanks to Khizer Naeem's publishing OCP UPI deployment workshop. I heavily used his materials and copied some portion of it to my notes.
+This is my personal notes on OCP 4 cluster installation on a KVM. The steps below used to install the required stack on a bare metal, dedicated server that I got from one hosting providers. Although my goal was exposing my services to public internet access, I believe that you can use this guideline to deploy OCP4 on your laptop as skipping some steps.
+Thanks to Khizer Naeem's publishing OCP UPI deployment workshop and also OpenShift public bloggers. I heavily used their stuff and copied a lot pulling it all together.
 
 ### Prerequsities:
 
