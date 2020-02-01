@@ -9,7 +9,7 @@ dnf update
 ```
 Install some useful utilities
 ```shell
-dnf install nano vim wget curl net-tools lsof bash-completion zip unzip psmisc bind-utils
+dnf install -y nano vim wget curl net-tools lsof bash-completion zip unzip psmisc bind-utils cockpit jq 
 ```
 After update process finishes, release the disk space
 ```shell
@@ -27,12 +27,12 @@ vi /etc/hosts
 
 ### Check Network  
 ```shell
-ifconfig enp4s0
+ifconfig enp98s0f0
 ip a
 ping -c2 google.com
 #check speed
-ethtool enp4s0
-mii-tool enp4s0
+ethtool enp98s0f0
+mii-tool enp98s0f0
 #check port and who uses
 netstat -tulpn
 ss -tulpn
@@ -40,9 +40,11 @@ lsof -i4 -6
 ```
 change dns if needed
 ```shell
-nmcli con mod "enp4s0" ipv4.dns "8.8.8.8 8.8.4.4"
-nmcli c show id enp4s0
+nmcli con mod "enp98s0f0" ipv4.dns "8.8.8.8 8.8.4.4"
+nmcli c show id enp98s0f0
 ```
+
+Rename you nic if needed. Follow [this guide](https://www.itzgeek.com/how-tos/linux/centos-how-tos/how-to-change-network-interface-name-to-eth0-on-centos-8-rhel-8.html) 
 ### Set Time Zone
 
 ```shell
@@ -156,13 +158,13 @@ systemctl enable cockpit.socket
 firewall-cmd --add-service=cockpit
 firewall-cmd --add-service=cockpit --permanent
 
-````
+```
 At this point, you should be able to access cockpit from https://SERVER_IP:9090 URL.
 
 
 ### Secure SSH service
 
- It's a wise decision to change the default ssh port for extra security.  
+ Its a wise decision to change the default ssh port for extra security.  
 
 ```shell
 vi /etc/ssh/sshd_config

@@ -1,4 +1,5 @@
 # OpenShift 4 installation on KVM
+Updated for OCP Version: 4.3 , Tested on CentOS 8.1 minimal
 
 This is my personal notes on OCP 4 cluster installation on a KVM. The steps below used to install the required stack on a bare metal, dedicated server that I got from one hosting providers. Although my goal was exposing my services to public internet access, I believe that you can use this guideline to deploy OCP4 on your laptop as skipping some steps.
 Thanks to Khizer Naeem's publishing OCP UPI deployment workshop and also OpenShift public bloggers. I heavily used their stuff and copied a lot pulling it all together.
@@ -48,23 +49,30 @@ System enp4s0  b325fd44-30b3-c744-3fc9-e154b78e8c82  ethernet  enp4s0
 virbr0         9aec066b-abb3-43d8-bfd8-b5136603d6d5  bridge    virbr0
 ```
 
+### Step 1.1  Optionally install a new libvirt network. 
+
+```shell
+# Pick a random subnet octet (192.168.XXX.0) for this network
+NET_OCT="133"
+/usr/bin/cp /usr/share/libvirt/networks/default.xml /tmp/new-net.xml
+sed -i "s/default/ocp-${NET_OCT}/" /tmp/new-net.xml
+sed -i "s/virbr0/ocp-$NET_OCT/" /tmp/new-net.xml
+sed -i "s/122/${NET_OCT}/g" /tmp/new-net.xml
+virsh net-define /tmp/new-net.xml
+virsh net-autostart ocp-${NET_OCT}
+virsh net-start ocp-${NET_OCT}
+systemctl restart libvirtd
+````
+
 ## Step 2: Configure Dnsmasq for OCP
 
 Enable dnsmasq that embedded in Network Manager
 
 ```shell
+
 echo -e "[main]\ndns=dnsmasq" > /etc/NetworkManager/conf.d/00-dns.conf
 
- firewall-cmd --add-service=dns --permanent
-
- firewall-cmd --reload
-
- cat << 'EOF' | sudo tee /etc/NetworkManager/conf.d/dns.conf
-[main]
-dns=dnsmasq
-EOF
-
- cat << 'EOF' | sudo tee /etc/NetworkManager/dnsmasq.d/02-add-hosts.conf
+cat << 'EOF' | sudo tee /etc/NetworkManager/dnsmasq.d/02-add-hosts.conf
 # /etc/NetworkManager/dnsmasq.d/02-add-hosts.conf
 # By default, the plugin does not read from /etc/hosts.  
 # This forces the plugin to slurp in the file.
@@ -74,6 +82,10 @@ EOF
 #
 addn-hosts=/etc/hosts
 EOF
+
+firewall-cmd --add-service=dns --permanent
+
+firewall-cmd --reload
 
 systemctl reload NetworkManager
 systemctl status NetworkManager
@@ -106,17 +118,18 @@ sudo systemctl reload NetworkManager
 ```
 [for more information about dnsmasq](https://www.getpagespeed.com/server-setup/dns-caching-and-beyond-in-centos-rhel-7-and-8)
 
+
 ## Step 3: Download and Prepare OCP Files
 
 Prepare a directory for OCP deployment and download files.
 
-``` shell
+```bash
 mkdir ocp4 && cd ocp4
 mkdir rhcos-install
 # Download CoreOS
-wget https://mirror.openshift.com/pub/openshift-v4/dependencies/rhcos/4.2/4.2.0/rhcos-4.2.0-x86_64-installer-kernel -O rhcos-install/vmlinuz
+wget https://mirror.openshift.com/pub/openshift-v4/dependencies/rhcos/4.3/4.3.0/rhcos-4.3.0-x86_64-installer-kernel -O rhcos-install/vmlinuz
 
-wget https://mirror.openshift.com/pub/openshift-v4/dependencies/rhcos/4.2/4.2.0/rhcos-4.2.0-x86_64-installer-initramfs.img -O rhcos-install/initramfs.img
+wget https://mirror.openshift.com/pub/openshift-v4/dependencies/rhcos/4.3/4.3.0/rhcos-4.3.0-x86_64-installer-initramfs.img -O rhcos-install/initramfs.img
 
 #Generate treeinfo
 cat <<EOF > rhcos-install/.treeinfo
@@ -124,7 +137,7 @@ cat <<EOF > rhcos-install/.treeinfo
 arch = x86_64
 family = Red Hat CoreOS
 platforms = x86_64
-version = 4.2.0
+version = 4.3.0
 [images-x86_64]
 initrd = initramfs.img
 kernel = vmlinuz
@@ -133,30 +146,28 @@ EOF
 Download the bios image for Red Hat CoreOS.
 
 ```shell
-wget https://mirror.openshift.com/pub/openshift-v4/dependencies/rhcos/4.2/4.2.0/rhcos-4.2.0-x86_64-metal-bios.raw.gz
+wget https://mirror.openshift.com/pub/openshift-v4/dependencies/rhcos/4.3/4.3.0/rhcos-4.3.0-x86_64-metal.raw.gz
 ```
 
 Download the installer and client binaries. You may want to check if there's a newer version published before you download.
 
-``` shell
+```shell
 
-wget https://mirror.openshift.com/pub/openshift-v4/clients/ocp/4.2.13/openshift-client-linux-4.2.13.tar.gz
+wget https://mirror.openshift.com/pub/openshift-v4/clients/ocp/4.3.0/openshift-client-linux-4.3.0.tar.gz
 
-wget https://mirror.openshift.com/pub/openshift-v4/clients/ocp/4.2.13/openshift-install-linux-4.2.13.tar.gz
+wget https://mirror.openshift.com/pub/openshift-v4/clients/ocp/4.3.0/openshift-install-linux-4.3.0.tar.gz
 
-tar xf openshift-client-linux-4.2.13.tar.gz
+tar xf openshift-client-linux-4.3.0.tar.gz
 
-tar xf openshift-install-linux-4.2.13.tar.gz
+tar xf openshift-install-linux-4.3.0.tar.gz
 
 chmod +x oc
 chmod +x openshift-install
 chmod +x kubectl
-mv oc /usr/bin
-mv kubectl /usr/bin
-mv openshift-install /usr/bin
+mv -f oc /usr/bin
+mv -f kubectl /usr/bin
+mv -f openshift-install /usr/bin
 rm -f README.md
-rm -f openshift-client-linux-4.2.13.tar.gz
-rm -f openshift-install-linux-4.2.13.tar.gz
 ```
 
 ## Step 4: Environment Setup
@@ -172,7 +183,7 @@ HOST_IP=$(echo $HOST_NET | cut -d '/' -f1)
 DNS_DIR="/etc/NetworkManager/dnsmasq.d"
 #using a separate dnsmasq installed on the host set it to "/etc/dnsmasq.d"
 BASE_DOM="your-domain"
-CLUSTER_NAME="your-cluster"
+CLUSTER_NAME="your-cluster-name"
 # DNS Records that might be required: *.apps.your-cluster.your-domain, api.your-cluster.your-domain.com
 ```
 Pick your SSH public key (file).Feel free to generate a new one
@@ -227,12 +238,34 @@ firewall-cmd --zone=libvirt --add-port=9000-9999/udp --permanent
 firewall-cmd --zone=libvirt --add-port=30000-32767/udp --permanent
 firewall-cmd --reload
 ```
+
+Check if your kvm network enabled to  access public network.
+```shell
+ sysctl net.ipv4.ip_forward
+ ```
+ if the result is as below, you're good to go
+
+ ```shell
+  net.ipv4.ip_forward = 1
+```
+If its disabled, than we need to forward the outgoing traffic from libvirt to to public.
+```shell
+sysctl -w net.ipv4.ip_forward=1
+```
+To permanently set this parameter, place the line below in /etc/sysctl.conf
+```shell 
+net.ipv4.ip_forward = 1
+```
+ 
 Start python's webserver, serving the current directory in screen.
 This will serve the ignition and image files to CoreOS installer.
 ```shell
 # Pick a port that you want to listen on
 WEB_PORT="1234"
 firewall-cmd --add-port ${WEB_PORT}/tcp
+firewall-cmd --add-port ${WEB_PORT}/tcp --permanent
+firewall-cmd --zone=libvirt --add-port ${WEB_PORT}/tcp
+firewall-cmd --zone=libvirt --add-port ${WEB_PORT}/tcp --permanent
 dnf -y install screen python3
 # Start your http server
 screen -S ${CLUSTER_NAME} -dm \
@@ -256,11 +289,11 @@ cat <<EOF > install_dir/install-config.yaml
 apiVersion: v1
 baseDomain: ${BASE_DOM}
 compute:
-- hyperthreading: Disabled
+- hyperthreading: Enabled
   name: worker
   replicas: 0
 controlPlane:
-  hyperthreading: Disabled
+  hyperthreading: Enabled
   name: master
   replicas: 3
 metadata:
@@ -299,44 +332,105 @@ openshift-install create ignition-configs --dir=./install_dir
 ```
 
 ## Step 6: OCP VM Nodes Setup
+##### Download the RHEL guest image
+Download the RHEL guest image for KVM.
+To setup an external load balancer using haproxy.
+Visit RHEL [download page](https://access.redhat.com/downloads/content/69/ver=/rhel---7/latest/x86_64/product-software).
+Copy the download link of Red Hat Enterprise Linux KVM Guest Image.
 
+```shell
+
+wget "<paste your link>" -O ./${CLUSTER_NAME}-lb.qcow2
+cp ./${CLUSTER_NAME}-lb.qcow2 /var/lib/libvirt/images/${CLUSTER_NAME}-lb.qcow2
+
+```
+Create the load balancer VM.
+```shell
+virt-customize -a /var/lib/libvirt/images/${CLUSTER_NAME}-lb.qcow2 \
+  --root-password password:redhat1! --uninstall cloud-init \
+  --ssh-inject root:file:$SSH_KEY --selinux-relabel \
+  --sm-credentials "${RHNUSER}:password:${RHNPASS}" \
+  --sm-register --sm-attach auto \
+  --install [nano,vim,wget,curl,haproxy,traceroute,net-tools,lsof,bash-completion,zip,unzip,psmisc,bind-utils] 
+
+virt-install --import --name ${CLUSTER_NAME}-lb \
+--disk /var/lib/libvirt/images/${CLUSTER_NAME}-lb.qcow2 \
+--memory 1024 --cpu host --vcpus 1 --debug \
+--network network=${VIR_NET} --noreboot --noautoconsole
+
+```
+Start LB VM
+
+```shell
+virsh start ${CLUSTER_NAME}-lb
+```
+
+Find the IP and MAC address of the load balancer VM.
+Add DHCP reservation and an entry in /etc/hosts.
+We will also add the api and api-int host records as they should point to this load balancer.
+```shell
+LBIP=$(virsh domifaddr "${CLUSTER_NAME}-lb" | grep ipv4 | head -n1 | awk '{print $4}' | cut -d'/' -f1)
+MAC=$(virsh domifaddr "${CLUSTER_NAME}-lb" | grep ipv4 | head -n1 | awk '{print $2}')
+virsh net-update ${VIR_NET} add-last ip-dhcp-host --xml "<host mac='$MAC' ip='$LBIP'/>" --live --config
+echo "$LBIP lb.${CLUSTER_NAME}.${BASE_DOM}" \
+"api.${CLUSTER_NAME}.${BASE_DOM}" \
+"api-int.${CLUSTER_NAME}.${BASE_DOM}" >> /etc/hosts
+```
+##### Wildcard DNS
+Create the wild-card DNS record and point it to the load balancer:
+```shell
+echo "address=/apps.${CLUSTER_NAME}.${BASE_DOM}/${LBIP}" \
+>> ${DNS_DIR}/${CLUSTER_NAME}.conf
+```
+
+!!! At this point its highly recommended, connect to your lb VM and check if you can access top public internet from it and also the phyton web server that started in above steps. 
+
+##### Bootstrap
 Install the OpenShift bootstrap node. Make sure the CoreOS installer can get the image and ignition files
 
 ```shell
 
 virt-install --name ${CLUSTER_NAME}-bootstrap \
   --disk size=50 --ram 8192 --cpu host --vcpus 2 \
-  --os-type linux --os-variant rhel7 \
+  --os-type linux --os-variant rhel7.0 \
   --network network=${VIR_NET} --noreboot --noautoconsole \
   --location rhcos-install/ \
-  --extra-args "nomodeset rd.neednet=1 coreos.inst=yes coreos.inst.install_dev=vda coreos.inst.image_url=http://${HOST_IP}:${WEB_PORT}/rhcos-4.2.0-x86_64-metal-bios.raw.gz coreos.inst.ignition_url=http://${HOST_IP}:${WEB_PORT}/install_dir/bootstrap.ign"
+  --debug \
+  --extra-args "nomodeset rd.neednet=1 coreos.inst=yes coreos.inst.install_dev=vda coreos.inst.image_url=http://${HOST_IP}:${WEB_PORT}/rhcos-4.3.0-x86_64-metal.raw.gz coreos.inst.ignition_url=http://${HOST_IP}:${WEB_PORT}/install_dir/bootstrap.ign"
 ```
 Create master nodes
 
 ```shell
 
+# Recommended
+# --disk size=120 --ram 16384 --cpu host --vcpus 4 \
 for i in {1..3}
 do
 virt-install --name ${CLUSTER_NAME}-master-${i} \
---disk size=150 --ram 16384 --cpu host --vcpus 4 \
---os-type linux --os-variant rhel7 \
+--disk size=100 --ram 12288 --cpu host --vcpus 3 \
+--os-type linux --os-variant rhel7.0 \
 --network network=${VIR_NET} --noreboot --noautoconsole \
 --location rhcos-install/ \
---extra-args "nomodeset rd.neednet=1 coreos.inst=yes coreos.inst.install_dev=vda coreos.inst.image_url=http://${HOST_IP}:${WEB_PORT}/rhcos-4.2.0-x86_64-metal-bios.raw.gz coreos.inst.ignition_url=http://${HOST_IP}:${WEB_PORT}/install_dir/master.ign"
+--debug \
+--extra-args "nomodeset rd.neednet=1 coreos.inst=yes coreos.inst.install_dev=vda coreos.inst.image_url=http://${HOST_IP}:${WEB_PORT}/rhcos-4.3.0-x86_64-metal.raw.gz coreos.inst.ignition_url=http://${HOST_IP}:${WEB_PORT}/install_dir/master.ign"
 done
 
 ```
 Create worker nodes. Pay attentiton to VM configuration and allocate resources according to your host config.
 
 ```shell
-for i in {1..2}
+
+  
+# 120 GB 16 GB RAM 4 VCPU
+# --disk size=120 --ram 16384 --cpu host --vcpus 4 \
+for i in {1..3}
 do
   virt-install --name ${CLUSTER_NAME}-worker-${i} \
-  --disk size=150 --ram 32768 --cpu host --vcpus 12 \
-  --os-type linux --os-variant rhel7 \
-  --network network=${VIR_NET} --noreboot --noautoconsole \
+  --disk size=100 --ram 26624 --cpu host --vcpus 12 \
+  --os-type linux --os-variant rhel7.0 \
+  --network network=${VIR_NET} --noreboot --noautoconsole --debug \
   --location rhcos-install/ \
-  --extra-args "nomodeset rd.neednet=1 coreos.inst=yes coreos.inst.install_dev=vda coreos.inst.image_url=http://${HOST_IP}:${WEB_PORT}/rhcos-4.2.0-x86_64-metal-bios.raw.gz coreos.inst.ignition_url=http://${HOST_IP}:${WEB_PORT}/install_dir/worker.ign"
+  --extra-args "nomodeset rd.neednet=1 coreos.inst=yes coreos.inst.install_dev=vda coreos.inst.image_url=http://${HOST_IP}:${WEB_PORT}/rhcos-4.3.0-x86_64-metal.raw.gz coreos.inst.ignition_url=http://${HOST_IP}:${WEB_PORT}/install_dir/worker.ign"
 done
 ```
 Wait until all VM's complete the installation and shutdown.
@@ -347,7 +441,7 @@ watch "virsh list --all"
 
 We will tell dnsmasq to treat our cluster domain <cluster-name>.<base-domain> as local
 
-```script
+```bash
 echo "local=/${CLUSTER_NAME}.${BASE_DOM}/" > ${DNS_DIR}/${CLUSTER_NAME}.conf
 ```
 
@@ -355,7 +449,7 @@ Start up all the VMs.
 
 ```shell
 
-for x in lb bootstrap master-1 master-2 master-3 worker-1 worker-2
+for x in  bootstrap master-1 master-2 master-3 worker-1 worker-2  worker-3
 do
 virsh start ${CLUSTER_NAME}-$x
 done
@@ -363,7 +457,7 @@ done
 Wait for the VMs to obtain IP from DHCP
 
 ```shell
-for x in lb bootstrap master-1 master-2 master-3 worker-1 worker-2
+for x in  bootstrap master-1 master-2 master-3 worker-1 worker-2 worker-3
 do
 virsh domifaddr ${CLUSTER_NAME}-$x
 done
@@ -402,7 +496,7 @@ done
 Find the IP and MAC address of the worker VMs.
 Add DHCP reservation and an entry in /etc/hosts.
 ```shell
-for i in {1..2}
+for i in {1..3}
 do
  IP=$(virsh domifaddr "${CLUSTER_NAME}-worker-${i}" | grep ipv4 | head -n1 | awk '{print $4}' | cut -d'/' -f1)
  MAC=$(virsh domifaddr "${CLUSTER_NAME}-worker-${i}" | grep ipv4 | head -n1 | awk '{print $2}')
@@ -410,58 +504,14 @@ do
  echo "$IP worker-${i}.${CLUSTER_NAME}.${BASE_DOM}" >> /etc/hosts
 done
 ```
+
+Reload the NetworkManager and Libvirt for DNS entries to be loaded properly:
+```shell
+systemctl reload NetworkManager
+systemctl restart libvirtd
+```
 ## Step 8: HAProxy Setup
-##### Download the RHEL guest image
-Download the RHEL guest image for KVM.
-To setup an external load balancer using haproxy.
-Visit RHEL [download page](https://access.redhat.com/downloads/content/69/ver=/rhel---7/latest/x86_64/product-software).
-Copy the download link of Red Hat Enterprise Linux KVM Guest Image.
-
-```shell
-
-wget "<paste your link>" -O ./${CLUSTER_NAME}-lb.qcow2
-cp ./${CLUSTER_NAME}-lb.qcow2 /var/lib/libvirt/images/${CLUSTER_NAME}-lb.qcow2
-
-```
-Create the load balancer VM.
-```shell
-virt-customize -a /var/lib/libvirt/images/${CLUSTER_NAME}-lb.qcow2 \
-  --root-password password:redhat1! --uninstall cloud-init \
-  --ssh-inject root:file:$SSH_KEY --selinux-relabel \
-  --sm-credentials "${RHNUSER}:password:${RHNPASS}" \
-  --sm-register --sm-attach auto --install haproxy
-
-virt-install --import --name ${CLUSTER_NAME}-lb \
---disk /var/lib/libvirt/images/${CLUSTER_NAME}-lb.qcow2 \
---memory 1024 --cpu host --vcpus 1 \
---network network=${VIR_NET} --noreboot --noautoconsole
-
-```
-Start LB VM
-
-```shell
-virsh start ${CLUSTER_NAME}-lb
-```
-
-Find the IP and MAC address of the load balancer VM.
-Add DHCP reservation and an entry in /etc/hosts.
-We will also add the api and api-int host records as they should point to this load balancer.
-```shell
-LBIP=$(virsh domifaddr "${CLUSTER_NAME}-lb" | grep ipv4 | head -n1 | awk '{print $4}' | cut -d'/' -f1)
-MAC=$(virsh domifaddr "${CLUSTER_NAME}-lb" | grep ipv4 | head -n1 | awk '{print $2}')
-virsh net-update ${VIR_NET} add-last ip-dhcp-host --xml "<host mac='$MAC' ip='$LBIP'/>" --live --config
-echo "$LBIP lb.${CLUSTER_NAME}.${BASE_DOM}" \
-"api.${CLUSTER_NAME}.${BASE_DOM}" \
-"api-int.${CLUSTER_NAME}.${BASE_DOM}" >> /etc/hosts
-
-```
-##### Wildcard DNS
-Create the wild-card DNS record and point it to the load balancer:
-```shell
-echo "address=/apps.${CLUSTER_NAME}.${BASE_DOM}/${LBIP}" \
->> ${DNS_DIR}/${CLUSTER_NAME}.conf
-```
-
+Since we already deployed our load balancer VM, we need to configure it now
 ##### Configure haproxy
 
 Configure load balancing (haproxy).
@@ -534,6 +584,7 @@ backend infra-https
   balance roundrobin
   server worker-1 worker-1.${CLUSTER_NAME}.${BASE_DOM}:443 check
   server worker-2 worker-2.${CLUSTER_NAME}.${BASE_DOM}:443 check
+
 ' > /etc/haproxy/haproxy.cfg
 
 EOF
@@ -582,7 +633,6 @@ You can login to your openshift cluster and make sure that all the nodes are in 
 ```shell
 export KUBECONFIG=install_dir/auth/kubeconfig
 oc get nodes
-or
 cp install_dir/auth/kubeconfig ~/.kube/config
 oc get nodes
 ```
@@ -635,43 +685,51 @@ watch "oc get clusterversion; echo; oc get clusteroperators"
 ```
  When all the cluster operators are fully available, it should look some thing like this:
 
- ```script
- oc get clusteroperators
- NAME                                       VERSION   AVAILABLE   PROGRESSING   DEGRADED   SINCE
- authentication                             4.2.13     True        False         False      17m
- cloud-credential                           4.2.13     True        False         False      30m
- cluster-autoscaler                         4.2.13     True        False         False      20m
- console                                    4.2.13     True        False         False      17m
- dns                                        4.2.13     True        False         False      29m
- image-registry                             4.2.13     True        False         False      2m19s
- ingress                                    4.2.13     True        False         False      20m
- insights                                   4.2.13     True        False         False      30m
- kube-apiserver                             4.2.13     True        False         False      26m
- kube-controller-manager                    4.2.13     True        False         False      26m
- kube-scheduler                             4.2.13     True        False         False      26m
- machine-api                                4.2.13     True        False         False      30m
- machine-config                             4.2.13     True        False         False      28m
- marketplace                                4.2.13     True        False         False      23m
- monitoring                                 4.2.13     True        False         False      107s
- network                                    4.2.13     True        False         False      27m
- node-tuning                                4.2.13     True        False         False      24m
- openshift-apiserver                        4.2.13     True        False         False      2m13s
- openshift-controller-manager               4.2.13     True        False         False      26m
- openshift-samples                          4.2.13     True        False         False      18m
- operator-lifecycle-manager                 4.2.13     True        False         False      28m
- operator-lifecycle-manager-catalog         4.2.13     True        False         False      28m
- operator-lifecycle-manager-packageserver   4.2.13     True        False         False      24m
- service-ca                                 4.2.13     True        False         False      29m
- service-catalog-apiserver                  4.2.13     True        False         False      24m
- service-catalog-controller-manager         4.2.13     True        False         False      24m
- storage                                    4.2.13     True        False         False      23m
+```shell
+oc get clusteroperators
+NAME                                       VERSION   AVAILABLE   PROGRESSING   DEGRADED   SINCE
+authentication                             4.3.0     True        False         False      2m9s
+cloud-credential                           4.3.0     True        False         False      17m
+cluster-autoscaler                         4.3.0     True        False         False      8m21s
+console                                    4.3.0     True        False         False      3m49s
+dns                                        4.3.0     True        False         False      12m
+image-registry                             4.3.0     True        False         False      9m5s
+ingress                                    4.3.0     True        False         False      8m13s
+insights                                   4.3.0     True        False         False      13m
+kube-apiserver                             4.3.0     True        False         False      10m
+kube-controller-manager                    4.3.0     True        False         False      11m
+kube-scheduler                             4.3.0     True        False         False      11m
+machine-api                                4.3.0     True        False         False      12m
+machine-config                             4.3.0     True        False         False      11m
+marketplace                                4.3.0     True        False         False      8m23s
+monitoring                                 4.3.0     True        False         False      112s
+network                                    4.3.0     True        False         False      13m
+node-tuning                                4.3.0     True        False         False      9m19s
+openshift-apiserver                        4.3.0     True        False         False      8m45s
+openshift-controller-manager               4.3.0     True        False         False      11m
+openshift-samples                          4.3.0     True        False         False      7m58s
+operator-lifecycle-manager                 4.3.0     True        False         False      12m
+operator-lifecycle-manager-catalog         4.3.0     True        False         False      12m
+operator-lifecycle-manager-packageserver   4.3.0     True        False         False      8m53s
+service-ca                                 4.3.0     True        False         False      13m
+service-catalog-apiserver                  4.3.0     True        False         False      9m28s
+service-catalog-controller-manager         4.3.0     True        False         False      9m21s
+storage                                    4.3.0     True        False         False      9m4s
 
 
 oc get clusterversion
 NAME      VERSION   AVAILABLE   PROGRESSING   SINCE   STATUS
-version   4.2.13     True        False         95s     Cluster version is 4.2.13
+version   4.3.0     True        False         84s     Cluster version is 4.3.0
 
 ```
+
+By default ingress operator deploys haproxy pods on worker ndoes. We deployed 3 worker nodes and our routers run any 2 of that 3 workers. Let's label 2 of our worker nodes and change inress router deployment target
+```shell
+oc label nodes worker-1.${CLUSTER_NAME}.${BASE_DOM} node-role.kubernetes.io/router=''
+oc label nodes worker-2.${CLUSTER_NAME}.${BASE_DOM} node-role.kubernetes.io/router=''
+oc patch ingresscontroller default -n openshift-ingress-operator --type=merge --patch='{"nodePlacement": { "nodeSelector": { "matchLabels": { "node-role.kubernetes.io/router": ""} }}}'
+```
+Check router pods running in ``òpenshift-ingress``` project and if any of them running on worker-3 kill it. 
 
 Congratulations! Your cluster is ready and fully functional  
 
@@ -845,7 +903,7 @@ virt-customize -a /var/lib/libvirt/images/${CLUSTER_NAME}-nfs.qcow2 \
 # install the NFS VM
 virt-install --import --name ${CLUSTER_NAME}-nfs \
 --disk /var/lib/libvirt/images/${CLUSTER_NAME}-nfs.qcow2 \
---disk size=250 --memory 6144 --cpu host --vcpus 2 \
+--disk size=250 --memory 81292 --cpu host --vcpus 2 \
 --network network=${VIR_NET} --noreboot --noautoconsole
 # Start the NFS VM
 virsh start ${CLUSTER_NAME}-nfs
@@ -860,6 +918,7 @@ MAC=$(virsh domifaddr "${CLUSTER_NAME}-nfs" | grep ipv4 | head -n1 | awk '{print
 virsh net-update ${VIR_NET} add-last ip-dhcp-host --xml "<host mac='$MAC' ip='$NFSIP'/>" --live --config
 echo "$NFSIP nfs.${CLUSTER_NAME}.${BASE_DOM}"  >> /etc/hosts
 systemctl reload NetworkManager
+systemctl restart libvirtd
 ```
 
 ```shell
@@ -871,7 +930,7 @@ echo "Preparing NFS export directories"
 mkdir -p /export/ocp/registry
 mkdir -p /export/ocp/logging
 mkdir -p /export/ocp/metrics
-for i in {1..100}; do mkdir /export/ocp/pv$i; done
+for i in {1..100}; do mkdir -p /export/ocp/pv$i; done
 echo "Change mode and ownership"
 chown -R nfsnobody:nfsnobody /export
 chmod -R 777 /export/ocp
@@ -911,7 +970,7 @@ If tests are ok, let's create persistent volumes.
 mkdir storage
 cd storage
 echo 'Generating 1Gi PVs'
-for i in {1..20}
+for i in {1..15}
 do
 cat > ./pv$i.yaml <<EOF
 apiVersion: v1
@@ -921,6 +980,7 @@ metadata:
 spec:
   capacity:
     storage: 1Gi
+  persistentVolumeReclaimPolicy: Recycle
   accessModes:
     - ReadWriteMany
   nfs:
@@ -932,7 +992,7 @@ done
 ```
 ```shell
 echo 'Generating 2Gi PVs'
-for i in {21..30}
+for i in {16..25}
 do
 cat > ./pv$i.yaml <<EOF
 apiVersion: v1
@@ -942,6 +1002,7 @@ metadata:
 spec:
   capacity:
     storage: 2Gi
+  persistentVolumeReclaimPolicy: Recycle
   accessModes:
     - ReadWriteMany
   nfs:
@@ -953,7 +1014,7 @@ done
 ```
 ```shell
 echo 'Generating 5Gi PVs'
-for i in {31..35}
+for i in {26..30}
 do
 cat > ./pv$i.yaml <<EOF
 apiVersion: v1
@@ -963,8 +1024,50 @@ metadata:
 spec:
   capacity:
     storage: 5Gi
+  persistentVolumeReclaimPolicy: Recycle
   accessModes:
     - ReadWriteMany
+  nfs:
+    server: nfs
+    path: "/export/ocp/pv$i"
+EOF
+oc create -f ./pv$i.yaml
+done
+echo 'Generating 1Gi PVs'
+for i in {31..40}
+do
+cat > ./pv$i.yaml <<EOF
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv$i
+spec:
+  capacity:
+    storage: 1Gi
+  persistentVolumeReclaimPolicy: Recycle
+  accessModes:
+    - ReadWriteOnce
+  nfs:
+    server: nfs
+    path: "/export/ocp/pv$i"
+EOF
+oc create -f ./pv$i.yaml
+done
+
+echo 'Generating 2Gi PVs'
+for i in {41..45}
+do
+cat > ./pv$i.yaml <<EOF
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv$i
+spec:
+  capacity:
+    storage: 2Gi
+  persistentVolumeReclaimPolicy: Recycle
+  accessModes:
+    - ReadWriteOnce
   nfs:
     server: nfs
     path: "/export/ocp/pv$i"
@@ -1000,9 +1103,13 @@ Later we need to reconfigure image registry cluster operator
 #Get Image Registry Backup
 oc get configs.imageregistry.operator.openshift.io -o yaml --export > ./imageregistry-backup.yaml
 # Patch image registry , previously patched as empty dir
-oc patch configs.imageregistry.operator.openshift.io cluster --type json --patch '[{ "op": "remove", "path": "/spec/storage/emptyDir" }]'
-# No need to apply the command below. OCP automatically assigns
-# oc patch configs.imageregistry.operator.openshift.io cluster  --type merge  --patch '{"spec":{"storage":{"pvc":{"claim":""}}}}'
+oc edit configs.imageregistry.operator.openshift.io
+# Edit Below Values
+spec:
+  managementState: Managed
+  storage:
+    pvc:
+      claim:
 #Check the config
 oc get configs.imageregistry.operator.openshift.io -o yaml
 #Check the cluster operator status
