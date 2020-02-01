@@ -1285,3 +1285,44 @@ ssh lb.${CLUSTER_NAME}.${BASE_DOM} netstat -nltupe | grep ':6443\|:22623\|:80\|:
 ```
 
 </details>
+
+
+<details>
+<summary>Optional: Upgrade my Cluster</summary>
+
+Check your current version and update repo 
+
+```shell
+oc get clusterversion; echo; oc get clusterversion -o json|jq ".items[0].spec"
+```
+
+You can use the command below to list the available upgrade paths.
+
+```shell
+curl -H "Accept: application/json" https://api.openshift.com/api/upgrades_info/v1/graph?channel=stable-4.3 | jq '.'
+```
+
+If you like to get it as visual graph, below is the command for that:
+(download [graph.sh](https://github.com/openshift/cincinnati/blob/master/hack/graph.sh) first) 
+
+```shell
+curl -sH 'Accept:application/json' 'https://api.openshift.com/api/upgrades_info/v1/graph?channel=stable-4.3' | ./graph.sh | dot -Tsvg >graph.svg
+```
+Triggering an upgrade to the latest version is simple
+
+```shell
+oc adm upgrade --to-latest=true
+```
+If you need to upgrade to a specific version, below is the command for that. This is also the way of revert your upgrade back
+```shell 
+oc adm upgrade --to-image='quay.io/openshift-release-dev/ocp-release@sha256:b8307ac0f3ec4ac86c3f3b52846425205022da52c16f56ec31cbe428501001d6' --allow-explicit-upgrade --force=true
+```
+Monitor your upgrade and wait until it finish 
+
+```shell 
+watch 'oc get clusterversion; echo; oc get clusteroperators' 
+``` 
+Check logs 
+```shell
+oc logs -f -n openshift-cluster-version cluster-version-operator-6f8fc78789-t5l5d
+```
