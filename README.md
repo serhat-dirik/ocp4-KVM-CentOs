@@ -1161,6 +1161,8 @@ Installing Certificates for the Router
 ```shell
 # create the secret – and if you have existing certificates, make sure to provide the path to your certificates instead.
 oc create secret tls router-certs --cert=${CERTDIR}/fullchain.pem --key=${CERTDIR}/key.pem -n openshift-ingress
+# or to update existing one: 
+# oc create secret tls router-certs --cert=${CERTDIR}/fullchain.pem --key=${CERTDIR}/key.pem  --dry-run -o yaml | oc replace -n openshift-ingress  -f -
 # update the Custom Resource for your router. The default custom resource is of type IngressController, is named default and is located in the openshift-ingress-operator project. Note that this project is different from where you created the secret earlier.
 oc patch ingresscontroller default -n openshift-ingress-operator --type=merge --patch='{"spec": { "defaultCertificate": { "name": "router-certs" }}}'
 
